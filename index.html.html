@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Biometria Facial</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;600;800&display=swap');
+
+  :root {
+    --bg: #090e1a;
+    --panel: #0d1526;
+    --border: #1a2a4a;
+    --cyan: #00e5ff;
+    --green: #00ff88;
+    --red: #ff3355;
+    --yellow: #ffd600;
+    --text: #c8d8f0;
+    --dim: #4a6080;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Exo 2', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 16px;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 60% 40% at 20% 10%, rgba(0,229,255,0.05) 0%, transparent 60%),
+      radial-gradient(ellipse 50% 30% at 80% 90%, rgba(0,255,136,0.04) 0%, transparent 60%);
+    pointer-events: none;
+  }
+
+  h1 {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: clamp(1.1rem, 3vw, 1.6rem);
+    letter-spacing: 0.25em;
+    color: var(--cyan);
+    text-transform: uppercase;
+    margin-bottom: 4px;
+    text-shadow: 0 0 18px rgba(0,229,255,0.4);
+  }
+
+  .subtitle {
+    font-size: 0.75rem;
+    color: var(--dim);
+    letter-spacing: 0.15em;
+    margin-bottom: 24px;
+    font-family: 'Share Tech Mono', monospace;
+  }
+
+  .main-grid {
+    display: grid;
+    grid-template-columns: 1fr 280px;
+    gap: 16px;
+    width: 100%;
+    max-width: 960px;
+  }
+
+  @media (max-width: 700px) {
+    .main-grid { grid-template-columns: 1fr; }
+  }
+
+  /* Camera panel */
+  .cam-panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .cam-header {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--dim);
+    letter-spacing: 0.12em;
+  }
+
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--dim);
+  }
+  .dot.active { background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 1.5s infinite; }
+
+  @keyframes pulse {
+    0%,100% { opacity: 1; } 50% { opacity: 0.4; }
+  }
+
+  .video-wrapper {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 4/3;
+    background: #000;
+  }
+
+  #video {
+    position: absolute;
+    inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1);
+  }
+
+  #canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%; height: 100%;
+    transform: scaleX(-1);
+  }
+
+  /* Status overlay */
+  .status-overlay {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 8px 20px;
+    border-radius: 30px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    transition: all 0.3s ease;
+    opacity: 0;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+
+  .status-overlay.show { opacity: 1; }
+
+  .status-overlay.recognized {
+    background: rgba(0,255,136,0.15);
+    border: 1px solid var(--green);
+    color: var(--green);
+    text-shadow: 0 0 10px var(--green);
+    box-shadow: 0 0 20px rgba(0,255,136,0.2);
+  }
+
+  .status-overlay.rejected {
+    background: rgba(255,51,85,0.15);
+    border: 1px solid var(--red);
+    color: var(--red);
+    text-shadow: 0 0 10px var(--red);
+    box-shadow: 0 0 20px rgba(255,51,85,0.2);
+  }
+
+  .status-overlay.enrolling {
+    background: rgba(255,214,0,0.15);
+    border: 1px solid var(--yellow);
+    color: var(--yellow);
+    text-shadow: 0 0 10px var(--yellow);
+  }
+
+  /* Corner decorations */
+  .corner {
+    position: absolute;
+    width: 20px; height: 20px;
+    border-color: var(--cyan);
+    border-style: solid;
+    opacity: 0.5;
+  }
+  .corner.tl { top: 10px; left: 10px; border-width: 2px 0 0 2px; }
+  .corner.tr { top: 10px; right: 10px; border-width: 2px 2px 0 0; }
+  .corner.bl { bottom: 10px; left: 10px; border-width: 0 0 2px 2px; }
+  .corner.br { bottom: 10px; right: 10px; border-width: 0 2px 2px 0; }
+
+  /* Right panel */
+  .side-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+  }
+
+  .card-title {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.68rem;
+    color: var(--dim);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+
+  /* Serial */
+  .serial-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .serial-status {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--dim);
+    flex-shrink: 0;
+    transition: all 0.3s;
+  }
+  .serial-status.connected { background: var(--green); box-shadow: 0 0 8px var(--green); }
+
+  #serial-text {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--dim);
+  }
+
+  /* Buttons */
+  .btn {
+    width: 100%;
+    padding: 11px;
+    border-radius: 8px;
+    border: 1px solid;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.78rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+
+  .btn:last-child { margin-bottom: 0; }
+
+  .btn-serial {
+    border-color: var(--cyan);
+    color: var(--cyan);
+    background: rgba(0,229,255,0.07);
+  }
+  .btn-serial:hover { background: rgba(0,229,255,0.15); box-shadow: 0 0 14px rgba(0,229,255,0.2); }
+
+  .btn-enroll {
+    border-color: var(--yellow);
+    color: var(--yellow);
+    background: rgba(255,214,0,0.07);
+  }
+  .btn-enroll:hover { background: rgba(255,214,0,0.15); box-shadow: 0 0 14px rgba(255,214,0,0.2); }
+  .btn-enroll:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  .btn-lock {
+    border-color: var(--red);
+    color: var(--red);
+    background: rgba(255,51,85,0.07);
+  }
+  .btn-lock:hover { background: rgba(255,51,85,0.15); }
+  .btn-lock:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  .btn-clear {
+    border-color: var(--dim);
+    color: var(--dim);
+    background: transparent;
+    font-size: 0.7rem;
+  }
+  .btn-clear:hover { border-color: var(--red); color: var(--red); }
+
+  /* Registered faces */
+  #face-count {
+    font-size: 2rem;
+    font-family: 'Share Tech Mono', monospace;
+    color: var(--cyan);
+    text-align: center;
+    text-shadow: 0 0 16px rgba(0,229,255,0.4);
+  }
+
+  .face-label {
+    text-align: center;
+    font-size: 0.68rem;
+    color: var(--dim);
+    font-family: 'Share Tech Mono', monospace;
+    letter-spacing: 0.12em;
+    margin-top: 2px;
+  }
+
+  /* Servo state */
+  .servo-visual {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 8px 0;
+  }
+
+  .servo-icon {
+    font-size: 1.8rem;
+    transition: transform 0.5s ease;
+  }
+
+  .servo-state {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.9rem;
+  }
+
+  .servo-state.open { color: var(--green); text-shadow: 0 0 10px var(--green); }
+  .servo-state.closed { color: var(--red); }
+
+  /* Log */
+  #log {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--dim);
+    max-height: 90px;
+    overflow-y: auto;
+    line-height: 1.6;
+  }
+
+  #log::-webkit-scrollbar { width: 4px; }
+  #log::-webkit-scrollbar-track { background: transparent; }
+  #log::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .log-ok { color: var(--green); }
+  .log-err { color: var(--red); }
+  .log-info { color: var(--cyan); }
+  .log-warn { color: var(--yellow); }
+
+  /* Scan line animation */
+  @keyframes scanline {
+    0% { top: 0; } 100% { top: 100%; }
+  }
+
+  .scanline {
+    position: absolute;
+    left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(transparent, rgba(0,229,255,0.3), transparent);
+    animation: scanline 3s linear infinite;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+
+<h1>◈ Sistema de Biometria Facial</h1>
+<p class="subtitle">MEDIAPIPE FACE RECOGNITION · WEB SERIAL API</p>
+
+<div class="main-grid">
+
+  <!-- Camera -->
+  <div class="cam-panel">
+    <div class="cam-header">
+      <div class="dot active" id="cam-dot"></div>
+      <span>CÂMERA AO VIVO</span>
+    </div>
+    <div class="video-wrapper">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="canvas"></canvas>
+      <div class="scanline"></div>
+      <div class="corner tl"></div>
+      <div class="corner tr"></div>
+      <div class="corner bl"></div>
+      <div class="corner br"></div>
+      <div class="status-overlay" id="status-overlay">—</div>
+    </div>
+  </div>
+
+  <!-- Side panel -->
+  <div class="side-panel">
+
+    <!-- Serial -->
+    <div class="card">
+      <div class="card-title">◌ Conexão Serial</div>
+      <div class="serial-row" style="margin-bottom:10px">
+        <div class="serial-status" id="serial-dot"></div>
+        <span id="serial-text">Desconectado</span>
+      </div>
+      <button class="btn btn-serial" id="btn-connect">Conectar Arduino</button>
+    </div>
+
+    <!-- Actions -->
+    <div class="card">
+      <div class="card-title">◌ Ações</div>
+      <button class="btn btn-enroll" id="btn-enroll" disabled>📷 Cadastrar Rosto</button>
+      <button class="btn btn-lock" id="btn-lock" disabled>🔒 Trancar Servo</button>
+      <button class="btn btn-clear" id="btn-clear">Apagar Todos os Rostos</button>
+    </div>
+
+    <!-- Face count -->
+    <div class="card" style="text-align:center">
+      <div class="card-title">◌ Rostos Cadastrados</div>
+      <div id="face-count">0</div>
+      <div class="face-label">PESSOAS</div>
+    </div>
+
+    <!-- Servo state -->
+    <div class="card">
+      <div class="card-title">◌ Estado do Servo</div>
+      <div class="servo-visual">
+        <div class="servo-icon" id="servo-icon">🔒</div>
+        <div class="servo-state closed" id="servo-state">TRANCADO</div>
+      </div>
+    </div>
+
+    <!-- Log -->
+    <div class="card" style="flex:1">
+      <div class="card-title">◌ Log do Sistema</div>
+      <div id="log"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- MediaPipe -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+
+<script>
+// ─── Estado global ───────────────────────────────────────────────
+let serialPort = null;
+let writer = null;
+let registeredFaces = JSON.parse(localStorage.getItem('biometria_faces') || '[]');
+let servoOpen = false;
+let enrollMode = false;
+let currentDescriptor = null;
+
+const MATCH_THRESHOLD = 0.045; // distância euclidiana normalizada
+const ENROLL_LANDMARKS = 50;   // pontos usados para criar o descritor
+
+// ─── Utilidades de log ────────────────────────────────────────────
+const logEl = document.getElementById('log');
+function log(msg, type = 'info') {
+  const el = document.createElement('div');
+  el.className = `log-${type}`;
+  const time = new Date().toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  el.textContent = `[${time}] ${msg}`;
+  logEl.prepend(el);
+  if (logEl.children.length > 30) logEl.lastChild.remove();
+}
+
+// ─── Contagem de rostos ───────────────────────────────────────────
+function updateFaceCount() {
+  document.getElementById('face-count').textContent = registeredFaces.length;
+}
+updateFaceCount();
+
+// ─── Salvar faces no localStorage ────────────────────────────────
+function saveFaces() {
+  localStorage.setItem('biometria_faces', JSON.stringify(registeredFaces));
+  updateFaceCount();
+}
+
+// ─── Extrair descritor a partir dos landmarks ─────────────────────
+// Usa distâncias entre pontos-chave do rosto normalizadas pela distância
+// entre os olhos — invariante à escala e posição
+function extractDescriptor(landmarks) {
+  // Pontos-chave: contorno do rosto, olhos, nariz, boca
+  const keyIndices = [
+    10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288,
+    397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136,
+    172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109,
+    // olhos
+    33, 133, 362, 263,
+    // nariz
+    1, 4, 5, 6,
+    // boca
+    61, 291, 0, 17
+  ];
+
+  const pts = keyIndices.map(i => landmarks[i]);
+
+  // Distância entre olhos para normalização
+  const eyeL = landmarks[133], eyeR = landmarks[362];
+  const eyeDist = Math.hypot(eyeL.x - eyeR.x, eyeL.y - eyeR.y);
+  if (eyeDist < 0.01) return null;
+
+  // Vetor de distâncias entre pares de pontos consecutivos
+  const descriptor = [];
+  for (let i = 0; i < pts.length; i++) {
+    for (let j = i + 1; j < pts.length; j += 3) {
+      const d = Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y) / eyeDist;
+      descriptor.push(d);
+    }
+  }
+  return descriptor;
+}
+
+// ─── Distância entre descritores ─────────────────────────────────
+function euclideanDist(a, b) {
+  if (a.length !== b.length) return Infinity;
+  let sum = 0;
+  for (let i = 0; i < a.length; i++) sum += (a[i] - b[i]) ** 2;
+  return Math.sqrt(sum) / a.length;
+}
+
+// ─── Comparar com rostos cadastrados ─────────────────────────────
+function matchFace(descriptor) {
+  if (registeredFaces.length === 0) return false;
+  let minDist = Infinity;
+  for (const face of registeredFaces) {
+    const d = euclideanDist(descriptor, face.descriptor);
+    if (d < minDist) minDist = d;
+  }
+  return minDist < MATCH_THRESHOLD;
+}
+
+// ─── Status overlay ───────────────────────────────────────────────
+let overlayTimer = null;
+function showOverlay(msg, cls, duration = 2000) {
+  const el = document.getElementById('status-overlay');
+  el.textContent = msg;
+  el.className = `status-overlay show ${cls}`;
+  clearTimeout(overlayTimer);
+  if (duration > 0) {
+    overlayTimer = setTimeout(() => { el.classList.remove('show'); }, duration);
+  }
+}
+
+// ─── Serial ───────────────────────────────────────────────────────
+document.getElementById('btn-connect').addEventListener('click', async () => {
+  try {
+    serialPort = await navigator.serial.requestPort();
+    await serialPort.open({ baudRate: 9600 });
+    writer = serialPort.writable.getWriter();
+    document.getElementById('serial-dot').classList.add('connected');
+    document.getElementById('serial-text').textContent = 'Conectado';
+    document.getElementById('btn-enroll').disabled = false;
+    document.getElementById('btn-lock').disabled = false;
+    log('Arduino conectado com sucesso', 'ok');
+  } catch (e) {
+    log('Falha na conexão: ' + e.message, 'err');
+  }
+});
+
+async function sendSerial(char) {
+  if (!writer) { log('Arduino não conectado', 'warn'); return; }
+  try {
+    await writer.write(new TextEncoder().encode(char));
+  } catch (e) {
+    log('Erro ao enviar: ' + e.message, 'err');
+  }
+}
+
+// ─── Servo visual ─────────────────────────────────────────────────
+function setServoState(open) {
+  servoOpen = open;
+  const icon = document.getElementById('servo-icon');
+  const state = document.getElementById('servo-state');
+  if (open) {
+    icon.textContent = '🔓';
+    state.textContent = 'ABERTO';
+    state.className = 'servo-state open';
+  } else {
+    icon.textContent = '🔒';
+    state.textContent = 'TRANCADO';
+    state.className = 'servo-state closed';
+  }
+}
+
+// ─── Botões ───────────────────────────────────────────────────────
+document.getElementById('btn-enroll').addEventListener('click', () => {
+  if (!currentDescriptor) {
+    log('Nenhum rosto detectado na câmera', 'warn');
+    return;
+  }
+  enrollMode = true;
+  showOverlay('CADASTRANDO...', 'enrolling', 0);
+  log('Modo cadastro ativado', 'info');
+
+  // Coleta 5 amostras para maior robustez
+  let samples = [];
+  const interval = setInterval(() => {
+    if (currentDescriptor) samples.push([...currentDescriptor]);
+    if (samples.length >= 5) {
+      clearInterval(interval);
+      enrollMode = false;
+      // Média das amostras
+      const avg = samples[0].map((_, i) => {
+        return samples.reduce((s, d) => s + d[i], 0) / samples.length;
+      });
+      registeredFaces.push({ descriptor: avg, id: Date.now() });
+      saveFaces();
+      showOverlay('ROSTO CADASTRADO!', 'recognized');
+      log(`Rosto cadastrado. Total: ${registeredFaces.length}`, 'ok');
+    }
+  }, 200);
+});
+
+document.getElementById('btn-lock').addEventListener('click', async () => {
+  await sendSerial('0');
+  setServoState(false);
+  log('Servo trancado manualmente', 'warn');
+});
+
+document.getElementById('btn-clear').addEventListener('click', () => {
+  if (!confirm('Apagar todos os rostos cadastrados?')) return;
+  registeredFaces = [];
+  saveFaces();
+  log('Todos os rostos apagados', 'warn');
+});
+
+// ─── MediaPipe Face Mesh ──────────────────────────────────────────
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+let lastSendTime = 0;
+let lastResult = null;
+
+const faceMesh = new FaceMesh({
+  locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+});
+
+faceMesh.setOptions({
+  maxNumFaces: 1,
+  refineLandmarks: true,
+  minDetectionConfidence: 0.6,
+  minTrackingConfidence: 0.6
+});
+
+faceMesh.onResults(results => {
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
+    currentDescriptor = null;
+    // Se havia rosto reconhecido e ele saiu, trava o servo
+    if (lastResult === true) {
+      lastResult = null;
+      sendSerial('0');
+      setServoState(false);
+      log('Rosto saiu do campo de visão — servo trancado', 'warn');
+    }
+    return;
+  }
+
+  const landmarks = results.multiFaceLandmarks[0];
+  currentDescriptor = extractDescriptor(landmarks);
+
+  // Desenhar mesh sutil
+  drawConnectors(ctx, landmarks, FACEMESH_TESSELATION, { color: 'rgba(0,229,255,0.08)', lineWidth: 1 });
+  drawConnectors(ctx, landmarks, FACEMESH_RIGHT_EYE, { color: 'rgba(0,229,255,0.5)', lineWidth: 1.5 });
+  drawConnectors(ctx, landmarks, FACEMESH_LEFT_EYE, { color: 'rgba(0,229,255,0.5)', lineWidth: 1.5 });
+  drawConnectors(ctx, landmarks, FACEMESH_FACE_OVAL, { color: 'rgba(0,229,255,0.35)', lineWidth: 1.5 });
+  drawConnectors(ctx, landmarks, FACEMESH_LIPS, { color: 'rgba(0,229,255,0.4)', lineWidth: 1.5 });
+
+  if (enrollMode) return;
+
+  // Reconhecimento a cada 800ms
+  const now = Date.now();
+  if (now - lastSendTime < 800) return;
+  lastSendTime = now;
+
+  if (!currentDescriptor) return;
+
+  const matched = matchFace(currentDescriptor);
+
+  if (matched !== lastResult) {
+    lastResult = matched;
+    if (matched) {
+      showOverlay('✓ RECONHECIDO', 'recognized');
+      log('Rosto reconhecido — servo aberto', 'ok');
+      sendSerial('1');   // envia UMA vez ao mudar estado
+      setServoState(true);
+    } else if (registeredFaces.length > 0) {
+      showOverlay('✗ NÃO RECONHECIDO', 'rejected');
+      log('Rosto não reconhecido', 'err');
+      sendSerial('0');   // envia UMA vez ao mudar estado
+      setServoState(false);
+    }
+    // se não há rostos cadastrados, não envia nada
+  }
+});
+
+// ─── Iniciar câmera ───────────────────────────────────────────────
+const camera = new Camera(video, {
+  onFrame: async () => { await faceMesh.send({ image: video }); },
+  width: 640, height: 480
+});
+camera.start().then(() => log('Câmera iniciada', 'ok')).catch(e => log('Erro câmera: ' + e, 'err'));
+</script>
+</body>
+</html>
